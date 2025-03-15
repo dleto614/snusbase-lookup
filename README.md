@@ -1,4 +1,4 @@
-# Snusbase Lookup:
+# Snusbase Lookup
 
 This is just a script I wrote to lookup domains and emails using the snusbase api. Currently I only need domain and email, but plan on adding more features as I need to for my osint and other projects.
 
