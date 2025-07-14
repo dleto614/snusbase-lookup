@@ -20,14 +20,6 @@ def read_file(file):
     except Exception as error:
         print("Error at read_file: {}".format(error))
 
-def write_file(data, file):
-    json_data =  json.dumps(data, indent=4)
-    fd = open(file, "a")
-
-    # This is dumb.
-    fd.write(json_data+"\n")
-    fd.close()
-
 def item_generator(json_input, lookup_key):
     if isinstance(json_input, dict):
         for k, v in json_input.items():
@@ -52,7 +44,7 @@ def remove_duplicates(data):
     results = []
     for line in data:
         if line not in results:
-            print(line)
+            # print(line)
             results.append(line)
     return results
 
@@ -68,7 +60,6 @@ def send_request(url, body=None):
     return response.json()
 
 def search_domains(domain):
-    # TODO: Run emails in blocks with multiprocessing "threading". Will make it go faster.
 
     # Search Snusbase
     search_response = send_request('data/search', {
@@ -79,38 +70,124 @@ def search_domains(domain):
              
     return search_response
 
-def args_write_file(search_response, emails, args):
-     if len(search_response["results"]) != 0 or len(emails) != 0 and args.output is not None:
-                print("Writing results to file {}".format(args.output))
-                
-                if len(emails) != 0:
-                    final_emails = remove_duplicates(emails)
-                    #print(final_emails)
+def search_usernames(username):
 
-                    with open(args.output, mode="a") as email_fd:
-                        email_fd.write("\n".join(final_emails) + "\n")
+    # Search Snusbase
+    search_response = send_request('data/search', {
+        'terms': [username],
+        'types': ["username"],  # can be username, email, lastip, hash, password and/or name, and _domain
+        'wildcard': False,
+    })
+             
+    return search_response
+
+def search_emails(email):
+
+    # Search Snusbase
+    search_response = send_request('data/search', {
+        'terms': [email],
+        'types': ["email"],  # can be username, email, lastip, hash, password and/or name, and _domain
+        'wildcard': False,
+    })
+             
+    return search_response
+
+def args_write_all_file(search_response, lookup, args):
+    if args.json is not None:
+        if len(search_response["results"]) != 0:
+            print("Writing results to json file {}".format(args.json))
+
+            with open(args.json, mode="a") as fd:
+                data = {"lookup": lookup, "results": search_response["results"]}
+                fd.write(json.dumps(data, indent=4) + "\n")
+
+def args_write_file(search_response, emails, lookup, args):
+    if args.output is not None:
+        if len(search_response["results"]) != 0 or len(emails) != 0:
+                    print("Writing results to file {}".format(args.output))
+                    
+                    if len(emails) != 0:
+                        final_emails = remove_duplicates(emails)
+                        #print(final_emails)
+
+                        with open(args.output, mode="a") as email_fd:
+                            email_fd.write("\n".join(final_emails) + "\n")
+
+    elif args.json is not None:
+        if len(search_response["results"]) != 0 or len(emails) != 0:
+            print("Writing results to json file {}".format(args.json))
+            
+            if len(emails) != 0:
+                final_emails = remove_duplicates(emails)
+
+                data = {"domain": lookup, "emails": final_emails} # Build the json object
+
+                with open(args.json, mode="a") as email_fd:
+                    email_fd.write(json.dumps(data, indent=4) + "\n")
+
+def check_output(search_response, request, args):
+    if args.getemails == True:
+        emails = get_email(search_response)
+    else:
+        emails = None
+        print(search_response)
+
+    if args.output and emails is not None:
+        args_write_file(search_response, emails, request, args)
+    elif args.json and emails is not None:
+        args_write_file(search_response, emails, request, args)
+    elif emails is not None:
+        final_emails = remove_duplicates(emails)
+    elif args.json is not None and args.getemails == False:
+        args_write_all_file(search_response, request, args)
+
+    print("Sleeping")
+    time.sleep(1)
+
+def check_output_args(args):
+    if args.output is not None and args.getemails == False:
+                print("Output is in json so please use the '--json' or '-j' flag to write the results to a file")
+                sys.exit(1)
 
 def main():
 
+    # ...
+    # Santa Clause is coming to town
+    
+    # He’s making a list,
+    # Checking it twice,
+    # Gonna find out who’s naughty or nice.
+    # Santa Claus is coming to town
+
     chk_emails = list()
     chk_domains = list()
+    chk_usernames = list()
 
     email_buff = list()
 
     # TODO: Add username and ip options. Also can add name as well.
-    # TODO: Add arguments to define which kind of input file. True or False.
-    # TODO: Add an argument to read file and see if the format (search-option:what-to-lookup).
+
+    # Added username. Will get to lastip later.
 
     parser=argparse.ArgumentParser(description="Simple python3 program to check if an email is associated with any of the import online account modules.")
+    
     parser.add_argument("--email", "-e", help="Email to check.", type=str)
     parser.add_argument("--domain", "-d", help="Domain to check", type=str)
+    parser.add_argument("--username", "-u", help="Username to check", type=str)
+    
     parser.add_argument("--getemails", "-ge", help="Extract emails from results", default=False, action=argparse.BooleanOptionalAction)
+    
     parser.add_argument("--input", "-i", help="File with emails or domains, one on each line.", type=str)
     parser.add_argument("--domainfile", "-df", help="Define if input file is for domains", default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument("--emailfile", "-ef", help="Define if input file is for emails", default=False, action=argparse.BooleanOptionalAction)
-    parser.add_argument("--output", "-o", help="Specify a file to save results to.", type=str)
+    parser.add_argument("--usernamefile", "-uf", help="Define if input file is for usernames", default=False, action=argparse.BooleanOptionalAction)
+
+    parser.add_argument("--output", "-o", help="Specify a file to save results to as a text file.", type=str)
+    parser.add_argument("--json", "-j", help="Specify a file to save results to as a json file.", type=str)
+
     args=parser.parse_args()
 
+    # if-elif-else goes brrrrrrrrrrrrr
     if args.email is not None:
         chk_emails.append(args.email)
     elif args.input is not None and args.emailfile == True: 
@@ -120,12 +197,18 @@ def main():
             chk_emails.append(email.strip())
     elif args.domain is not None:
         chk_domains.append(args.domain)
-
     elif args.input is not None and args.domainfile == True:
         domains = read_file(args.input)
         
         for domain in domains:
             chk_domains.append(domain.strip())
+    elif args.username is not None:
+        chk_usernames.append(args.username)
+    elif args.input is not None and args.usernamefile == True:
+        usernames = read_file(args.input)
+        
+        for username in usernames:
+            chk_usernames.append(username.strip())
     else:
         parser.print_help()
         sys.exit(1)
@@ -133,54 +216,38 @@ def main():
     
     if chk_domains is not None:
         for domain in chk_domains:
+
+            check_output_args(args)
+
             print("Checking domain: {}".format(domain))
             search_response = search_domains(domain)
 
-            if args.getemails == True:
-               emails = get_email(search_response)
-            else:
-                emails = None
-                print(search_response)
-
-            # TODO: Add a block to write just the json returned instead of filtering out just the emails
-
-            if args.output and emails is not None:
-                args_write_file(search_response, emails, args)
-            elif emails is not None:
-                final_emails = remove_duplicates(emails)
-
-            print("Sleeping")
-            time.sleep(1)
+            check_output(search_response, domain, args)
 
     if chk_emails is not None:
         for email in chk_emails:
-            print("Checking email: {}".format(email))
             
-            # TODO: Run emails in blocks with multiprocessing "threading". Will make it go faster.
+            check_output_args(args)
 
-            # Search Snusbase
-            search_response = send_request('data/search', {
-                        'terms': [email],
-                        'types': ["email"],  # can be username, email, lastip, hash, password and/or name, and _domain
-                        'wildcard': False,
-             })
+            print("Checking email: {}".format(email))
+            search_response = search_emails(email)
 
-            if args.getemails == True:
-               emails = get_email(search_response)
-            else:
-                emails = None
-                print(search_response)
+            check_output(search_response, email, args)
 
-            if args.output and emails is not None:
-                args_write_file(search_response, emails, args)
-            elif emails is not None:
-                final_emails = remove_duplicates(emails)
+    if chk_usernames is not None:
+        for username in chk_usernames:
 
-            print("Sleeping")
-            time.sleep(1)                
+            check_output_args(args)
+
+            print("Checking username: {}".format(username))
+            search_response = search_usernames(username)
+
+            check_output(search_response, username, args)
 
 # TODO: Add more options to filter out like usernames, passwords, hashes, etc
 # TODO: Add more options to search like usernames, passwords, hashes, etc
+
+# Added usernames. Will get to passwords and hashes later.
 
 # Still lots of stuff to add, but this has worked for what I needed at the time.
 
